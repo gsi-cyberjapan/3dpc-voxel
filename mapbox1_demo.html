@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>3次元点群データ閲覧サイト Mapbox GL JS Ver1</title>
+	<meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+	<link type="text/css" href="https://cdn.jsdelivr.net/npm/mapbox-gl@1.13.0/dist/mapbox-gl.css" rel="stylesheet">
+	<!--jsTreeライブラリー-->
+	<link type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/jstree/3.3.2/themes/default/style.min.css" rel="stylesheet">
+	<link href="stylesheet.css" rel="stylesheet">
+</head>
+<body>
+
+<div id="map"></div>
+<div id="menu">
+	<a href="javascript:void(0)" id="menu-button"><div id="menuButtonText">＞</div></a>
+	<div class="tabs">
+		<input id="tab-vectortiles" type="radio" name="tab_item" checked>
+		<label class="tab_item" for="tab-vectortiles">3次元点群<br>データ選択</label>
+		<input id="tab-elevationTiles" type="radio" name="tab_item">
+		<label class="tab_item" for="tab-elevationTiles">背景地図の<br>3次元表示</label>
+		<input id="tab-backMap" type="radio" name="tab_item">
+		<label class="tab_item" for="tab-backMap">背景地図の<br>スタイル選択</label>
+		<div class="tab_content" id="tabcontent-elevationTiles">
+			<div id="Radio_elevationTiles" class="tab_content_item"></div>
+		</div>
+		<div class="tab_content" id="tabcontent-vectortiles">
+			<div class="tab_content_item">
+				<!--
+				<label class="fileSelectButton" for="vectorTilesJsonFile">
+					<input type="file" id="vectorTilesJsonFile" accept=".json" class="noDisplayButton">スタイルファイルを選択
+				</label>
+				-->
+			</div>
+			<div id="Radio_vectorTiles" class="tab_content_item"></div>
+		</div>
+		<div class="tab_content" id="tabcontent-backMap">
+			<div class="tab_content_item">
+				<input type="radio" name="backMapRadio" id="rdo_std" value="std" onchange="changeBackMapRadio(this);"><label for="rdo_std">標準地図</label>
+				<input type="radio" name="backMapRadio" id="rdo_ann" value="ann" onchange="changeBackMapRadio(this);" checked><label for="rdo_ann">注記のみ</label>
+				<input type="radio" name="backMapRadio" id="rdo_lin" value="lin" onchange="changeBackMapRadio(this);"><label for="rdo_lin">注記と線のみ</label>
+			</div>
+			<div class="tab_content_item">
+				<label class="fileSelectButton" for="styleJsonFile">
+					<input type="file" id="styleJsonFile" accept=".json" class="noDisplayButton">スタイルファイルを選択
+				</label>
+			</div>
+			<div id="jstree" class="tab_content_item"></div>
+		</div>
+	</div>
+</div>
+
+<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/mapbox-gl@1.13.0/dist/mapbox-gl.js"></script>
+<script type="text/javascript" src="https://unpkg.com/deck.gl@^8.0.0/dist.min.js"></script>
+
+<!--jsTreeライブラリー-->
+<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jstree/3.3.2/jstree.min.js"></script>
+
+<script>
+'use strict';
+
+	//標高タイルの定義
+	const elevationTiles={
+		'interpolated-ground_PDAL_WebP':{'label':"背景地図を3次元表示する（標高タイルを使用）",path:'elevationTiles/{z}/{x}/{y}.webp'}
+	};
+
+	//ベクトルタイルのJSONを保存する変数
+	let vectorTilesJsonData;
+
+	document.addEventListener('DOMContentLoaded', function(){
+		//メニューボタンをクリックするとレフトメニューが表示される
+		document.getElementById('menu-button').addEventListener('click', menuButtonToggle, false);
+
+		function menuButtonToggle() {
+			document.getElementById('menu').classList.toggle('menu-open');
+			document.getElementById('menuButtonText').classList.toggle('rotateText');
+		}
+
+	}, false);
+	
+	//jsTreeのインスタンス作成。参照するデータは後で入れる。
+	$(function () {
+		//jsTreeでツリー上のチェックボックスを作成する
+		$('#jstree').jstree({
+			'core':{
+				"themes":{"icons":false}  //jsTreeのデフォルトのアイコンは使用しない
+			}
+			,'plugins':["checkbox"]        //チェックボックス表示用のプラグイン
+			,"checkbox" : {
+		      "keep_selected_style":false  //デフォルトのチェックON時のラベルが選択状態なのをやめる
+		      ,tie_selection : false       //check_node.jstreeなどのイベントを発生させるために必要な設定
+		    },
+		});
+		
+    	//jsTreeのチェックボックスがONになったときに動作
+		$('#jstree').on("check_node.jstree", function(event, data){
+        	if(data.node.children.length>0){
+        		//jsTreeのノードに子要素がある場合は、子要素をすべて処理する
+        		data.node.children.forEach(x=>{
+					map.setLayoutProperty(x, 'visibility', 'visible');
+				});
+			}else{
+				//子要素がない場合は、自分のidを処理する
+				map.setLayoutProperty(data.node.id, 'visibility', 'visible');
+			};
+    	});
+    	//jsTreeのチェックボックスがOFFになったときに動作
+		$('#jstree').on("uncheck_node.jstree", function(event, data){
+        	if(data.node.children.length>0){
+        		//jsTreeのノードに子要素がある場合は、子要素をすべて処理する
+        		data.node.children.forEach(x=>{
+					map.setLayoutProperty(x, 'visibility', 'none');
+				});
+			}else{
+				//子要素がない場合は、自分のidを処理する
+				map.setLayoutProperty(data.node.id, 'visibility', 'none');
+			};
+    	});
+    	//jsTreeがリフレッシュされた後（データが更新された後）は、チェックボックスをすべてONにする
+		$('#jstree').on("refresh.jstree", function(event, data){
+			$('#jstree').jstree(true).check_all();
+    	});
+	});
+
+	const map = new mapboxgl.Map({
+		container: 'map'
+		, style: 'style_Anotation.json'//初期表示は注記のみのスタイル
+		, zoom: 10
+		, center: [141.46153,38.69411]
+		, maxZoom:24
+		, localIdeographFontFamily:false
+		, hash:true
+	});
+
+	//拡大縮小回転解除ボタンを配置。"visualizePitch":trueで傾きの解除処理も追加
+	map.addControl(new mapboxgl.NavigationControl({"visualizePitch":true}));
+
+	map.on('load', () => {
+
+		//スタイルファイルからスタイルレイヤーごとの表示非表示チェックボックスを生成する。
+		const styleJson = map.getStyle();
+		CreateStyleLayerJsTreeCheckBox(styleJson);
+		CreateElevationTilesSource();
+		
+		//初期表示のベクトルタイルの読み込み
+		fetch("./style_vectortiles_demo_for_v1.json")
+		.then(response => {
+		   return response.json();
+		})
+		.then(jsondata => {
+			createVectorTilesSource(jsondata);
+		});
+		
+	});
+	
+	map.on('styledataloading', function() {
+	    map.once('styledata', function() {
+			CreateElevationTilesSource();
+			createVectorTilesSource(vectorTilesJsonData);
+	    });
+	});
+	
+	//ベクトルタイルのスタイルファイルの読み込み
+	function createVectorTilesSource(jsondata){
+
+		const Radio_vectorlTiles=document.getElementById("Radio_vectorTiles");
+		
+		//既存の子要素（ラジオボタン）をすべて削除する
+		while( Radio_vectorlTiles.firstChild ){
+ 	 		Radio_vectorlTiles.removeChild( Radio_vectorlTiles.firstChild );
+		};
+		
+		//ページ再読み込み直後は、vectorTilesJsonDataはundefinedなので、既存のSourceとLayerの削除処理は不要。
+		if (vectorTilesJsonData !== undefined) {
+			//既存のmapのLayerを削除する
+			vectorTilesJsonData.layers.forEach((elem, index) => {
+				if (map.getLayer(elem.id)){
+					map.removeLayer(elem.id);
+				};
+			});
+			//既存のmapのSourceを削除する（Layerより先にSourceを削除しようとするとエラーになる。SourceはLayerの後に削除する）
+			for (let key in vectorTilesJsonData.sources) {
+				if (map.getSource(key)){
+					map.removeSource(key);
+				};
+			};
+		}
+		
+		Radio_vectorlTiles.insertAdjacentHTML('beforeEnd', 
+			`<label for="noVectorTiles"><input id="noVectorTiles" type="radio" name="vectorTilesRadio" onchange="changeVectorTilesRadio(this);" checked="checked">3次元点群データを表示しない</label><br>`
+		);
+
+		const firstLayerName=map.getStyle().layers[0].id;//最も下のレイヤー名
+
+		for (let key in jsondata.sources) {
+			map.addSource(key, jsondata.sources[key]);
+		};
+		
+		jsondata.layers.forEach((elem, index) => {
+			//地図にレイヤーを追加。addLayerメソッドは、第二引数に指定したレイヤーの下に今回の追加レイヤーを配置する。
+			map.addLayer(elem,firstLayerName);
+			//参照したスタイルファイルに、metadata.title属性があった場合、ラジオボタンのラベルを変更する。
+			if(elem.metadata && elem.metadata.title){
+				//metadata.title属性がある場合
+				Radio_vectorTiles.insertAdjacentHTML('beforeEnd', `<label for="${elem.id}"><input id="${elem.id}" type="radio" name="vectorTilesRadio" onchange="changeVectorTilesRadio(this);">${elem.metadata.title}</label><br>`);
+			}else{
+				//metadata.title属性がない場合
+				Radio_vectorTiles.insertAdjacentHTML('beforeEnd', `<label for="${elem.id}"><input id="${elem.id}" type="radio" name="vectorTilesRadio" onchange="changeVectorTilesRadio(this);">${elem.id}</label><br>`);
+			}
+			//初期状態では、非表示
+			map.setLayoutProperty(elem.id, 'visibility', 'none');
+		});
+		//変更後のベクトルタイルのデータを保存しておく。
+		vectorTilesJsonData=jsondata;
+	}
+	
+	function CreateElevationTilesSource(){
+		const Radio_elevationTiles=document.getElementById("Radio_elevationTiles");
+		
+		//既存の子要素（ラジオボタン）をすべて削除する
+		while( Radio_elevationTiles.firstChild ){
+ 	 		Radio_elevationTiles.removeChild( Radio_elevationTiles.firstChild );
+		};
+		
+		Radio_elevationTiles.insertAdjacentHTML('beforeEnd', 
+			`<label for="noElevationTiles"><input id="noElevationTiles" type="radio" name="elevationTilesRadio" onchange="changeElevationTilesRadio(this);" checked="checked">背景地図を3次元表示しない</label><br>`
+		);
+		
+		for (let key in elevationTiles) {
+			//MapboxGLJSVer1+deck.glではmap.addSourceを削除
+			
+			Radio_elevationTiles.insertAdjacentHTML('beforeEnd', `<label for="${key}"><input id="${key}" type="radio" name="elevationTilesRadio" onchange="changeElevationTilesRadio(this);">${elevationTiles[key].label}</label><br>`);
+		};
+	}
+	
+	function changeVectorTilesRadio(e){
+		//既存のベクトルタイルをすべて非表示にする
+		vectorTilesJsonData.layers.forEach((elem, index) => {
+			map.setLayoutProperty(elem.id, 'visibility', 'none');
+		});
+
+		if(e.id!=="noVectorTiles"){
+			map.setLayoutProperty(`${e.id}`, 'visibility', 'visible');
+		};
+	}
+
+	function changeBackMapRadio(e){
+		//任意のファイル選択をクリアにする
+		document.getElementById("styleJsonFile").value = "";
+
+		let backMapStyleFilePath;
+		if(e.value==="std"){
+			backMapStyleFilePath="./std_vertical.json";
+		}else if(e.value==="lin"){
+			backMapStyleFilePath="./style_AnotationAndLine.json";
+		}else{
+			backMapStyleFilePath="./style_Anotation.json";
+		};
+		
+		//あらかじめサーバーに配置されているスタイルファイルを読み込む
+		fetch(backMapStyleFilePath)
+		.then(response => {
+		   return response.json();
+		})
+		.then(jsondata => {
+			changeBackMap(jsondata);
+		});
+	}
+	
+	function changeBackMap(jsondata){
+		map.setStyle(jsondata,{diff:false});
+		CreateStyleLayerJsTreeCheckBox(jsondata);
+	}
+	
+	function changeElevationTilesRadio(e){
+		//MapboxGLJSVer1+deck.gl用コード
+		Mapbox1DisplayElevationTiles(e.id);
+	}
+
+	//ベクトルタイルのスタイルファイル選択ダイアログ
+	var obj_vectorTilesstyleJson = document.getElementById("vectorTilesJsonFile");
+
+	obj_vectorTilesstyleJson.addEventListener("change", function(evt){
+		//ファイル名の長さが0の場合は、キャンセルボタンを押した時→何もしない
+		if(obj_vectorTilesstyleJson.files.length > 0){
+			let file = evt.target.files;
+			
+			// FileReaderを作成
+			var fileReader = new FileReader() ;
+
+			// 読み込み完了時のイベント
+			fileReader.onload = function () {
+				//検査
+				if(is_json(fileReader.result)==false){
+					//検査エラー
+					return;//処理終了
+				};
+			
+				const styleJson=JSON.parse(fileReader.result);
+				createVectorTilesSource(styleJson);
+			}
+			// 読み込みを実行
+			fileReader.readAsText(file[0]) ;
+		};
+		//同じファイル名を選択しても、changeイベントが発生するようvalue(ファイルパス)を空にする。
+		obj_vectorTilesstyleJson.value = '';
+	},false);
+
+	//背景地図スタイルファイル選択ダイアログ
+	var obj_styleJson = document.getElementById("styleJsonFile");
+
+	obj_styleJson.addEventListener("change", function(evt){
+		//ファイル名の長さが0の場合は、キャンセルボタンを押した時→何もしない
+		if(obj_styleJson.files.length > 0){
+			let file = evt.target.files;
+			
+			// FileReaderを作成
+			var fileReader = new FileReader() ;
+
+			// 読み込み完了時のイベント
+			fileReader.onload = function () {
+				//検査
+				if(is_json(fileReader.result)==false){
+					//検査エラーのとき
+					return;//処理終了
+				};
+
+				const jsondata=JSON.parse(fileReader.result);
+				changeBackMap(jsondata);
+
+				//背景地図ラジオボタンを選択なしにする
+				for (const element of document.getElementsByName('backMapRadio')) {
+					element.checked = false;
+				}
+			}
+			// 読み込みを実行
+			fileReader.readAsText(file[0]);
+		};
+		//同じファイル名を選択しても、changeイベントが発生するようvalue(ファイルパス)を空にする。
+		obj_styleJson.value = '';
+	},false);
+	
+	//jsTreeのデータの設定
+	//スタイルファイルからスタイルレイヤーごとのjsTreeの表示非表示チェックボックスを生成する
+	function CreateStyleLayerJsTreeCheckBox(jsondata){
+
+		//jsTreeで参照する階層構造を作成する
+		//ソースレイヤー値の取得
+		const sourcelayer1 = jsondata.layers.filter(function(l,i){
+			return l["source-layer"]!==undefined})
+		.map(function(l, i) {
+			return l["source-layer"]; 
+		});
+		
+		//ソースレイヤー値の重複排除
+		const sourcelayer2 = Array.from(new Set(sourcelayer1));
+		
+		//ソースレイヤー値の並び替え（sort()）と、jsTree用のオブジェクト化
+		let L_SourceLayer = sourcelayer2.sort().map(function(sl, i) {
+			return {"id":sl,"parent":"#","text":sl}; 
+		});
+		//レイヤーの配列の作成
+		const layer1 = jsondata.layers.map(function(l, i) {
+			const minzoom=l["minzoom"]!==undefined ? l["minzoom"]:"";
+			const maxzoom=l["maxzoom"]!==undefined ? l["maxzoom"]:"";
+			const kara=(l["minzoom"]===undefined && l["maxzoom"]===undefined) ? "":"～";
+			const sourcelayer=l["source-layer"]!==undefined ? l["source-layer"]:"#";
+			
+			let tmp_text;
+			if(l.metadata && l.metadata.path){
+				tmp_text=l["metadata"]["path"];
+			}else{
+				tmp_text=l["id"];
+			};
+			return {"id":l["id"],"parent":sourcelayer,"text":`${tmp_text} ${minzoom}${kara}${maxzoom}`}; 
+		});
+		//ソースレイヤー値の配列と、レイヤーの配列を結合
+		L_SourceLayer.push.apply(L_SourceLayer,layer1);
+		//階層化に使う配列をjsTreeに入れる
+		$('#jstree').jstree(true).settings.core.data = L_SourceLayer;//「true」は存在しているインスタンスを取得する（新規に作らない）
+		$('#jstree').jstree(true).refresh();
+	}
+	
+	//jsonフォーマットかの検査関数
+	function is_json(data) {
+		try {
+			JSON.parse(data);
+		} catch (error) {
+			alert("JSONのフォーマットではありません。\r\nエラー情報：" + error);
+			return false;
+		}
+		return true;
+	}
+	
+	//MapboxGLJSVer1+deck.gl用コード
+	function Mapbox1DisplayElevationTiles(id){
+		//既存の標高タイルレイヤーを削除する
+		if (map.getLayer("Hyokou_png")){
+			map.removeLayer("Hyokou_png");
+		};
+
+		if(id!="noElevationTiles"){
+			//標高タイルなしでなければ。
+			const firstLayerName=map.getStyle().layers[0].id;//最も下のレイヤー名
+
+			map.addLayer(new deck.MapboxLayer({
+				id: 'Hyokou_png'
+				, type: deck.TerrainLayer
+				, elevationDecoder: {
+				  "rScaler": 6553.6,
+				  "gScaler": 25.6,
+				  "bScaler": 0.1,
+				  "offset": -10000 //2021/2時点でChromeとFireFoxでエラーがあった値だが、その後修正された模様。
+				}
+			    , elevationData:[elevationTiles[id].path]
+			    , texture: "https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png"//地理院地図の標準地図を地形のテクスチャーにする
+		    }),firstLayerName);
+	    }
+	}
+</script>
+</body>
+</html>

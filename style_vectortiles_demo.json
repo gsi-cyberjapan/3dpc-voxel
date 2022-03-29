@@ -1,0 +1,15 @@
+{"version":8
+,"sources":{
+	"01_feature":{"type":"vector","tiles":["http://hogehoge/01_feature/{z}/{x}/{y}.pbf"],"minzoom":13,"maxzoom":17}
+	,"02_basetop1":{"type":"vector","tiles":["http://hogehoge/02_basetop1/{z}/{x}/{y}.pbf"],"minzoom":10,"maxzoom":17}
+	,"03_basetop2":{"type":"vector","tiles":["http://hogehoge/03_basetop2/{z}/{x}/{y}.pbf"],"minzoom":10,"maxzoom":18}
+	,"04_basetop4":{"type":"vector","tiles":["http://hogehoge/04_basetop4/{z}/{x}/{y}.pbf"],"minzoom":10,"maxzoom":19}
+	,"05_basetop8":{"type":"vector","tiles":["http://hogehoge/05_basetop8/{z}/{x}/{y}.pbf"],"minzoom":10,"maxzoom":20}
+},"layers":[
+	 {"id":"01_feature_1","type":"fill-extrusion","source":"01_feature","source-layer":"asprs0","metadata":{"title":"点の位置そのまま（ZL17で1m間隔に間引き） ※"},"paint":{"fill-extrusion-base":["-",["get","height"],["get","spacing"]],"fill-extrusion-color":["get","color"],"fill-extrusion-height":["get","height"]}}
+	,{"id":"02_basetop1_3","type":"fill-extrusion","source":"02_basetop1","source-layer":"feature","metadata":{"title":"メッシュ状に表現（ZL17で1m<sup>3</sup>の立方体）"},"paint":{"fill-extrusion-base":["-",["-",["get","top"],["get","base"]],["get","cell"]],"fill-extrusion-color":["get","color"],"fill-extrusion-height":["-",["get","top"],["get","base"]]}}
+	,{"id":"03_basetop2_3","type":"fill-extrusion","source":"03_basetop2","source-layer":"feature","metadata":{"title":"メッシュ状に表現（ZL17で2m<sup>3</sup>の立方体）"},"paint":{"fill-extrusion-base":["-",["-",["get","top"],["get","base"]],["get","cell"]],"fill-extrusion-color":["get","color"],"fill-extrusion-height":["-",["get","top"],["get","base"]]}}
+	,{"id":"04_basetop4_3","type":"fill-extrusion","source":"04_basetop4","source-layer":"feature","metadata":{"title":"メッシュ状に表現（ZL17で4m<sup>3</sup>の立方体）"},"paint":{"fill-extrusion-base":["-",["-",["get","top"],["get","base"]],["get","cell"]],"fill-extrusion-color":["get","color"],"fill-extrusion-height":["-",["get","top"],["get","base"]]}}
+	,{"id":"05_basetop8_3","type":"fill-extrusion","source":"05_basetop8","source-layer":"feature","metadata":{"title":"メッシュ状に表現（ZL17で8m<sup>3</sup>の立方体）"},"paint":{"fill-extrusion-base":["-",["-",["get","top"],["get","base"]],["get","cell"]],"fill-extrusion-color":["get","color"],"fill-extrusion-height":["-",["get","top"],["get","base"]]}}
+]
+}
